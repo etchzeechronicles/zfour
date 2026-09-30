@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Invitation — ZFour</title>
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="container narrow">
+    <header class="brand"><div class="logo">Z</div><span>ZFour</span></header>
+
+    <section class="card invite">
+        <div class="eyebrow">YOU'RE INVITED</div>
+        <h1>Play Connect Four</h1>
+        <p id="description">Loading invitation…</p>
+
+        <div class="player-preview" id="preview"></div>
+
+        <label>Your name</label>
+        <input id="name" maxlength="24" placeholder="e.g. Sam">
+
+        <label>Invitation code</label>
+        <input id="code" readonly>
+
+        <button class="primary" onclick="acceptInvite()">Accept invitation &amp; play</button>
+        <div id="error" class="error"></div>
+    </section>
+</div>
+
+<script>
+const gameId = "{{ game_id }}";
+
+async function loadInvite() {
+    const response = await fetch("/api/invite/" + gameId);
+    const data = await response.json();
+
+    if (!response.ok) {
+        document.getElementById("description").textContent = data.error;
+        return;
+    }
+
+    document.getElementById("description").textContent =
+        data.host_name + " created a private game and is waiting for you.";
+
+    document.getElementById("code").value = data.invite_code;
+
+    document.getElementById("preview").innerHTML = `
+        <div><i class="dot ${data.host_color}"></i>
+        <strong>${escapeHtml(data.host_name)}</strong>
+        <small>Host · ${data.host_color}</small></div>
+
+        <div><i class="dot ${data.guest_color}"></i>
+        <strong>You</strong>
+        <small>Guest · ${data.guest_color}</small></div>
+    `;
+}
+
+async function acceptInvite() {
+    const name = document.getElementById("name").value.trim();
+    const code = document.getElementById("code").value;
+
+    if (!name) {
+        document.getElementById("error").textContent = "Enter your name.";
+        return;
+    }
+
+    const response = await fetch("/api/join", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({game_id: gameId, code, name})
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        document.getElementById("error").textContent = data.error;
+        return;
+    }
+
+    location.href = "/game/" + gameId + "?role=guest";
+}
+
+function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, c => ({
+        "&":"&amp;", "<":"&lt;", ">":"&gt;",
+        '"':"&quot;", "'":"&#039;"
+    }[c]));
+}
+
+loadInvite();
+</script>
+</body>
+</html>

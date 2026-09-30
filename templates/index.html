@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZFour — Connect Four</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="container">
+    <header class="brand">
+        <div class="logo">Z</div>
+        <span>ZFour</span>
+    </header>
+
+    <section class="hero">
+        <div class="eyebrow">PRIVATE TWO-PLAYER GAME</div>
+        <h1>Connect.<br>Drop.<br>Win.</h1>
+        <p>
+            Challenge a friend to a private Connect Four match.
+            Create an invitation, choose your color, and play online.
+        </p>
+    </section>
+
+    <div class="cards">
+        <section class="card">
+            <h2>Create a game</h2>
+            <p>Choose your name and color, then invite your friend.</p>
+
+            <label>Your name</label>
+            <input id="createName" maxlength="24" placeholder="e.g. Alex">
+
+            <label>Choose your color</label>
+            <div class="colors">
+                <button class="color active" id="redBtn" onclick="selectColor('red')">
+                    <i class="dot red"></i> Red
+                </button>
+                <button class="color" id="yellowBtn" onclick="selectColor('yellow')">
+                    <i class="dot yellow"></i> Yellow
+                </button>
+            </div>
+
+            <button class="primary" onclick="createGame()">Create invitation</button>
+            <div id="createError" class="error"></div>
+        </section>
+
+        <section class="card">
+            <h2>Join a game</h2>
+            <p>Already received an invitation? Enter its code.</p>
+
+            <label>Invitation code</label>
+            <input id="joinCode" maxlength="8" placeholder="A1B2C3D4">
+
+            <label>Your name</label>
+            <input id="joinName" maxlength="24" placeholder="e.g. Sam">
+
+            <button class="secondary" onclick="joinFromHome()">Accept invitation</button>
+            <div id="joinError" class="error"></div>
+        </section>
+    </div>
+
+    <footer>Two players · Private invitations · No AI required</footer>
+</div>
+
+<script>
+let selectedColor = "red";
+
+function selectColor(color) {
+    selectedColor = color;
+    document.querySelectorAll(".color").forEach(x => x.classList.remove("active"));
+    document.getElementById(color + "Btn").classList.add("active");
+}
+
+async function createGame() {
+    const name = document.getElementById("createName").value.trim();
+
+    if (!name) {
+        document.getElementById("createError").textContent = "Enter your name.";
+        return;
+    }
+
+    const response = await fetch("/api/create", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            name,
+            color: selectedColor
+        })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        document.getElementById("createError").textContent = data.error;
+        return;
+    }
+
+    location.href = "/game/" + data.game_id + "?role=host";
+}
+
+async function joinFromHome() {
+    const code = document.getElementById("joinCode").value.trim();
+    const name = document.getElementById("joinName").value.trim();
+
+    if (!code || !name) {
+        document.getElementById("joinError").textContent =
+            "Enter the invitation code and your name.";
+        return;
+    }
+
+    const response = await fetch("/api/invite-by-code/" + encodeURIComponent(code));
+    const data = await response.json();
+
+    if (!response.ok) {
+        document.getElementById("joinError").textContent = data.error;
+        return;
+    }
+
+    location.href = "/invite/" + data.game_id;
+}
+</script>
+</body>
+</html>

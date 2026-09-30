@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Game — ZFour</title>
+<link rel="stylesheet" href="/static/css/style.css">
+<script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+</head>
+<body>
+<div class="container">
+    <header class="topbar">
+        <div class="brand"><div class="logo">Z</div><span>ZFour</span></div>
+        <button class="small" onclick="location.href='/'">Leave game</button>
+    </header>
+
+    <div class="game-layout">
+        <main class="card board-card">
+            <div id="status" class="status">Loading…</div>
+            <div id="board" class="board"></div>
+        </main>
+
+        <aside class="card side">
+            <h2>Players</h2>
+            <div id="players"></div>
+            <div id="inviteBox"></div>
+        </aside>
+    </div>
+</div>
+
+<script>
+const gameId = "{{ game_id }}";
+const role = new URLSearchParams(location.search).get("role") || "host";
+
+let game = null;
+let lastState = "";
+let sending = false;
+
+const socket = io();
+
+// Re-join the room on EVERY (re)connection. A socket reconnect silently
+// drops room membership, which is what caused the host's board to go stale.
+socket.on("connect", () => {
+    socket.emit("join_game", {game_id: gameId});
+});
+
+socket.on("game_updated", loadGame);
+socket.on("player_joined", loadGame);
+
+// Safety net: keeps both boards in sync even if a socket event is missed.
+setInterval(() => {
+    if (document.visibilityState === "visible") loadGame();
+}, 2500);
+
+async function loadGame() {
+    try {
+        const response = await fetch("/api/game/" + gameId, {cache: "no-store"});
+        const data = await response.json();
+
+        if (!response.ok) {
+            document.getElementById("status").textContent =
+                data.error || "Game not found.";
+            return;
+        }
+
+        applyGame(data);
+    } catch (e) {
+        // transient network error — the poll will retry
+    }
+}
+
+function applyGame(next) {
+    const serialized = JSON.stringify(next);
+    if (serialized === lastState) return;   // nothing changed -> skip re-render
+    lastState = serialized;
+    game = next;
+    render();
+}
+
+function render() {
+    const opponent = role === "host" ? game.guest_name : game.host_name;
+
+    let status;
+
+    if (game.status === "waiting") {
+        status = "Waiting for your friend to accept the invitation…";
+    } else if (game.status === "finished") {
+        if (game.winner === "draw") {
+            status = "Draw game 🤝";
+        } else if (game.winner === role) {
+            status = "You win! 🎉";
+        } else {
+            status = (opponent || "Opponent") + " wins!";
+        }
+    } else {
+        status = game.turn === role
+            ? "Your turn"
+            : "Waiting for " + (opponent || "opponent");
+    }
+
+    document.getElementById("status").textContent = status;
+
+    const board = document.getElementById("board");
+    board.innerHTML = "";
+
+    game.board.forEach((row) => {
+        row.forEach((cell, c) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "cell" + (cell ? " " + cell : "");
+            button.onclick = () => makeMove(c);
+            board.appendChild(button);
+        });
+    });
+
+    document.getElementById("players").innerHTML = `
+        <div class="player">
+            <i class="dot ${game.host_color}"></i>
+            <div>
+                <strong>${escapeHtml(game.host_name)}</strong>
+                <small>Host · ${game.host_color}</small>
+            </div>
+        </div>
+
+        <div class="player">
+            <i class="dot ${game.guest_color}"></i>
+            <div>
+                <strong>${escapeHtml(game.guest_name || "Waiting…")}</strong>
+                <small>${game.guest_name ? "Guest · " + game.guest_color : "Invitation sent"}</small>
+            </div>
+        </div>
+    `;
+
+    if (role === "host" && game.status === "waiting") {
+        const inviteUrl = location.origin + "/invite/" + gameId;
+
+        document.getElementById("inviteBox").innerHTML = `
+            <div class="invite-box">
+                <small>INVITATION CODE</small>
+                <div class="code">${game.invite_code}</div>
+
+                <button class="small" onclick="copyText('${inviteUrl}')">
+                    Copy invite link
+                </button>
+
+                <button class="small" onclick="copyText('${game.invite_code}')">
+                    Copy code
+                </button>
+            </div>
+        `;
+    } else {
+        document.getElementById("inviteBox").innerHTML = "";
+    }
+}
+
+async function makeMove(column) {
+    if (sending) return;
+    if (!game || game.status !== "playing" || game.turn !== role) return;
+
+    sending = true;
+
+    try {
+        const response = await fetch("/api/move", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({game_id: gameId, column, role})
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            alert(data.error);
+            loadGame();
+            return;
+        }
+
+        // Render the mover's own move instantly instead of waiting for
+        // the socket broadcast to come back around.
+        if (data.game) {
+            applyGame(data.game);
+        } else {
+            loadGame();
+        }
+    } finally {
+        sending = false;
+    }
+}
+
+async function copyText(text) {
+    try {
+        await navigator.clipboard.writeText(text);
+        alert("Copied!");
+    } catch (e) {
+        prompt("Copy this:", text);
+    }
+}
+
+function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, c => ({
+        "&":"&amp;", "<":"&lt;", ">":"&gt;",
+        '"':"&quot;", "'":"&#039;"
+    }[c]));
+}
+
+loadGame();
+</script>
+</body>
+</html>
