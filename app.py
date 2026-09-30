@@ -3,14 +3,17 @@ eventlet.monkey_patch()
 
 import sqlite3
 import secrets
-import os
 import json
+import os
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from flask_socketio import SocketIO, join_room, emit
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-fallback-key")
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
 DB = "connect4.db"
@@ -322,7 +325,6 @@ def socket_join(data):
 
 
 if __name__ == "__main__":
-    init_db()
     port = int(os.environ.get("PORT", 5000))
     print(f"ZFour running at http://127.0.0.1:{port}")
     socketio.run(app, host="0.0.0.0", port=port)
