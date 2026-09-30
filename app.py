@@ -189,38 +189,47 @@ def invite_info(game_id):
 
 @app.post("/api/join")
 def join_game():
-    data = request.get_json() or {}
+    try:
+        data = request.get_json() or {}
 
-    game_id = data.get("game_id")
-    code = str(data.get("code", "")).strip().upper()
-    name = str(data.get("name", "")).strip()
+        game_id = data.get("game_id")
+        code = str(data.get("code", "")).strip().upper()
+        name = str(data.get("name", "")).strip()
 
-    game = get_game(game_id)
+        if not game_id:
+            return jsonify(error="Missing game ID."), 400
 
-    if not game:
-        return jsonify(error="Game not found."), 404
+        game = get_game(game_id)
 
-    if code != game["invite_code"]:
-        return jsonify(error="Invalid invitation code."), 403
+        if not game:
+            return jsonify(error="Game not found. It may have expired."), 404
 
-    if not name:
-        return jsonify(error="Please enter your name."), 400
+        if code != game["invite_code"]:
+            return jsonify(error="Invalid invitation code."), 403
 
-    if game["guest_name"]:
-        return jsonify(error="This game already has two players."), 409
+        if not name:
+            return jsonify(error="Please enter your name."), 400
 
-    conn = db()
-    conn.execute("""
-        UPDATE games
-        SET guest_name=?, status='playing'
-        WHERE id=?
-    """, (name[:24], game_id))
-    conn.commit()
-    conn.close()
+        if game["guest_name"]:
+            return jsonify(error="This game already has two players."), 409
 
-    socketio.emit("player_joined", room=game_id)
+        conn = db()
+        conn.execute("""
+            UPDATE games
+            SET guest_name=?, status='playing'
+            WHERE id=?
+        """, (name[:24], game_id))
+        conn.commit()
+        conn.close()
 
-    return jsonify(success=True)
+        socketio.emit("player_joined", room=game_id)
+
+        return jsonify(success=True)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify(error=f"Server error: {e}"), 500
 
 
 @app.get("/api/invite-by-code/<code>")

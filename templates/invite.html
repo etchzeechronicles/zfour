@@ -32,53 +32,91 @@
 const gameId = "{{ game_id }}";
 
 async function loadInvite() {
-    const response = await fetch("/api/invite/" + gameId);
-    const data = await response.json();
+    try {
+        const response = await fetch("/api/invite/" + gameId);
+        const text = await response.text();
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch {
+            document.getElementById("description").textContent =
+                "Server error loading invitation.";
+            console.error("Non-JSON:", text.slice(0, 500));
+            return;
+        }
 
-    if (!response.ok) {
-        document.getElementById("description").textContent = data.error;
-        return;
+        if (!response.ok) {
+            document.getElementById("description").textContent =
+                data.error || "Invitation not found.";
+            return;
+        }
+
+        document.getElementById("description").textContent =
+            data.host_name + " created a private game and is waiting for you.";
+
+        document.getElementById("code").value = data.invite_code;
+
+        document.getElementById("preview").innerHTML = `
+            <div><i class="dot ${data.host_color}"></i>
+            <strong>${escapeHtml(data.host_name)}</strong>
+            <small>Host · ${data.host_color}</small></div>
+
+            <div><i class="dot ${data.guest_color}"></i>
+            <strong>You</strong>
+            <small>Guest · ${data.guest_color}</small></div>
+        `;
+    } catch (e) {
+        document.getElementById("description").textContent =
+            "Network error: " + e.message;
     }
-
-    document.getElementById("description").textContent =
-        data.host_name + " created a private game and is waiting for you.";
-
-    document.getElementById("code").value = data.invite_code;
-
-    document.getElementById("preview").innerHTML = `
-        <div><i class="dot ${data.host_color}"></i>
-        <strong>${escapeHtml(data.host_name)}</strong>
-        <small>Host · ${data.host_color}</small></div>
-
-        <div><i class="dot ${data.guest_color}"></i>
-        <strong>You</strong>
-        <small>Guest · ${data.guest_color}</small></div>
-    `;
 }
 
 async function acceptInvite() {
+    const errEl = document.getElementById("error");
+    errEl.textContent = "";
+
     const name = document.getElementById("name").value.trim();
     const code = document.getElementById("code").value;
 
     if (!name) {
-        document.getElementById("error").textContent = "Enter your name.";
+        errEl.textContent = "Enter your name.";
         return;
     }
 
-    const response = await fetch("/api/join", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({game_id: gameId, code, name})
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-        document.getElementById("error").textContent = data.error;
+    if (!code) {
+        errEl.textContent = "Invitation code missing. Reload the page.";
         return;
     }
 
-    location.href = "/game/" + gameId + "?role=guest";
+    try {
+        const response = await fetch("/api/join", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ game_id: gameId, code, name })
+        });
+
+        // Read as text first — the server may return HTML on a crash.
+        const text = await response.text();
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch {
+            errEl.textContent = "Server error (non-JSON response). Check Render logs.";
+            console.error("Non-JSON response:", text.slice(0, 500));
+            return;
+        }
+
+        if (!response.ok) {
+            errEl.textContent = data.error || "Could not join the game.";
+            return;
+        }
+
+        location.href = "/game/" + gameId + "?role=guest";
+
+    } catch (e) {
+        errEl.textContent = "Network error: " + e.message;
+        console.error(e);
+    }
 }
 
 function escapeHtml(value) {
