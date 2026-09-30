@@ -1,10 +1,10 @@
 import eventlet
 eventlet.monkey_patch()
 
+import os
 import sqlite3
 import secrets
 import json
-import os
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from flask_socketio import SocketIO, join_room, emit
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -16,7 +16,8 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
-DB = "connect4.db"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB = os.path.join(BASE_DIR, "connect4.db")
 
 
 def db():
@@ -323,6 +324,7 @@ def socket_join(data):
     if game_id:
         join_room(game_id)
 
+init_db()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
